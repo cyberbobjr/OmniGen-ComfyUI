@@ -2,5 +2,5 @@ datasets
 accelerate
 pillow
 peft
-diffusers
+diffusers>=0.33.1
 timm
