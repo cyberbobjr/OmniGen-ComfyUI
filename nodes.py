@@ -1,4 +1,6 @@
+import gc
 import os
+from typing import Optional
 import torch
 import tempfile
 import shutil
@@ -6,12 +8,25 @@ import numpy as np
 from PIL import Image
 from OmniGen import OmniGenPipeline
 
-from .utils_nodes import get_vram_info
+
+def get_vram_info():
+    if torch.cuda.is_available():
+        t = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        r = torch.cuda.memory_reserved() / (1024**3)
+        a = torch.cuda.memory_allocated() / (1024**3)
+        f = t - (r + a)
+        return f"VRAM: Total {t:.2f}GB | Reserved {r:.2f}GB | Allocated {a:.2f}GB | Free {f:.2f}GB"
+    return "CUDA not available"
 
 class OmniGenNode:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        if torch.backends.mps.is_available():
+            self.device = "mps"
+        elif torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"        
+            
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -51,6 +66,10 @@ class OmniGenNode:
             img_pil.save(f.name)
         return f.name
 
+        """ Save input image to a temporary file and return the file path.
+        This is necessary because the OmniGen pipeline expects a file path for input images.
+        latent: (B, C, H, W) tensor
+        """    
     def gen(self, model, prompt_text, latent, num_inference_steps, guidance_scale,
             img_guidance_scale, max_input_image_size,
             use_input_image_size_as_output, seed, image_1=None, image_2=None, image_3=None):
@@ -83,29 +102,53 @@ class OmniGenNode:
             
         print(f"\nGenerating with prompt: {prompt_text}")
         print(f"Before inference: {get_vram_info()}")
-        
+        pipe.to(self.device)
         output = pipe(
-            prompt=prompt_text,
             input_images=input_images,
+            prompt=prompt_text,
             height=height,
             width=width,
             guidance_scale=guidance_scale,
+            output_type="pil",  # <-- Utilise PIL ici
+            # latents=latent["samples"],
             img_guidance_scale=img_guidance_scale,
             num_inference_steps=num_inference_steps,
-            separate_cfg_infer=separate_cfg_infer, 
-            use_kv_cache=True,
-            offload_kv_cache=True,
-            offload_model=offload_model,
             use_input_image_size_as_output=use_input_image_size_as_output,
-            seed=seed,
+            generator=torch.Generator(device="cpu").manual_seed(seed),
+            num_images_per_prompt=latent["samples"].shape[0],
             max_input_image_size=max_input_image_size,
         )
-        
+
         print(f"After inference: {get_vram_info()}")
-        
-        img = np.array(output[0]) / 255.0
-        img = torch.from_numpy(img).unsqueeze(0)
+
+        # Convertir toutes les images PIL en tenseurs torch et les empiler
+        img_tensors = []
+        for img_pil in output.images:
+            img_np = np.array(img_pil)
+            if img_np.ndim == 2:
+                img_np = np.expand_dims(img_np, axis=-1)
+            if img_np.shape[-1] == 4:
+                img_np = img_np[..., :3]
+            img_np = img_np.astype(np.float32) / 255.0
+            img_tensor = torch.from_numpy(img_np)
+            img_tensors.append(img_tensor)
+        img_batch = torch.stack(img_tensors, dim=0)
+        # S'assure que la sortie est bien [B, H, W, C]
+        if img_batch.ndim == 4 and img_batch.shape[1] in [1, 3, 4]:
+            img_batch = img_batch.permute(0, 2, 3, 1) if img_batch.shape[1] < img_batch.shape[-1] else img_batch
+        if img_batch.shape[-1] not in [3, 4]:
+            img_batch = img_batch.permute(0, 2, 3, 1)
+
         shutil.rmtree("tmp")
+
+        debug_img = img_batch[0].cpu().numpy()
+        debug_img = (debug_img * 255).clip(0, 255).astype(np.uint8)
+        if debug_img.shape[-1] == 1:
+            debug_img = np.repeat(debug_img, 3, axis=-1)
+        Image.fromarray(debug_img).save("debug_omnigen.png")
+        print("Image de debug sauvegardée sous debug_omnigen.png")
+
+        print("Output batch shape:", img_batch.shape, "dtype:", img_batch.dtype)        
 
         # Clean up if not storing in VRAM
         if not store_in_vram:
@@ -117,4 +160,4 @@ class OmniGenNode:
         else:
             print(f"Model kept in VRAM. Final state: {get_vram_info()}")
 
-        return (img,)
+        return (img_batch,)
