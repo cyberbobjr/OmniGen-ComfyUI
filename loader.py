@@ -5,21 +5,20 @@ import gc
 
 from .utils_nodes import get_vram_info
 
-def get_vram_info():
-    if torch.cuda.is_available():
-        t = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        r = torch.cuda.memory_reserved() / (1024**3)
-        a = torch.cuda.memory_allocated() / (1024**3)
-        f = t - (r + a)
-        return f"VRAM: Total {t:.2f}GB | Reserved {r:.2f}GB | Allocated {a:.2f}GB | Free {f:.2f}GB"
-    return "CUDA not available"
-
 class OmniGenLoader:
     current_loaded_model = None
     current_model_path = None
     current_dtype = None
     current_memory_config = None
-
+    
+    def __init__(self):
+        if torch.backends.mps.is_available():
+            self.device = "mps"
+        elif torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"     
+    
     @classmethod
     def INPUT_TYPES(s):
         model_dirs = []
@@ -100,6 +99,7 @@ class OmniGenLoader:
             from diffusers import OmniGenPipeline
 
             pipe = OmniGenPipeline.from_pretrained(model_path, torch_dtype=dtype)
+            pipe.to(self.device)
 
             print(f"After loading: {get_vram_info()}")
 
