@@ -107,9 +107,14 @@ class OmniGenLoader:
             print(f"Separate CFG Inference: {separate_cfg_infer}")
             print(f"Offload Model: {offload_model}")
             
-            from OmniGen import OmniGenPipeline
-            pipe = OmniGenPipeline.from_pretrained(model_path)
-            pipe.model = pipe.model.to(dtype)
+            # from OmniGen import OmniGenPipeline
+            from diffusers import OmniGenPipeline
+            # use_kv_cache=True,
+            # offload_kv_cache=True,
+            # offload_model=offload_model,
+
+            pipe = OmniGenPipeline.from_pretrained(model_path, torch_dtype=dtype)
+            # pipe.model = pipe.model.to(dtype)
 
             print(f"After loading: {get_vram_info()}")
 
