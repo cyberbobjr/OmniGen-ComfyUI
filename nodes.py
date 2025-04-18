@@ -1,12 +1,10 @@
 import gc
 import os
-from typing import Optional
 import torch
 import tempfile
 import shutil
 import numpy as np
 from PIL import Image
-from OmniGen import OmniGenPipeline
 
 
 def get_vram_info():
@@ -74,7 +72,7 @@ class OmniGenNode:
             img_guidance_scale, max_input_image_size,
             use_input_image_size_as_output, seed, image_1=None, image_2=None, image_3=None):
         
-        pipe, (store_in_vram, separate_cfg_infer, offload_model) = model
+        pipe, (store_in_vram) = model
         
         print("\n=== OmniGen Generation ===")
         print(f"Pre-generation {get_vram_info()}")
@@ -110,7 +108,6 @@ class OmniGenNode:
             width=width,
             guidance_scale=guidance_scale,
             output_type="pil",  # <-- Utilise PIL ici
-            # latents=latent["samples"],
             img_guidance_scale=img_guidance_scale,
             num_inference_steps=num_inference_steps,
             use_input_image_size_as_output=use_input_image_size_as_output,
@@ -140,13 +137,6 @@ class OmniGenNode:
             img_batch = img_batch.permute(0, 2, 3, 1)
 
         shutil.rmtree("tmp")
-
-        debug_img = img_batch[0].cpu().numpy()
-        debug_img = (debug_img * 255).clip(0, 255).astype(np.uint8)
-        if debug_img.shape[-1] == 1:
-            debug_img = np.repeat(debug_img, 3, axis=-1)
-        Image.fromarray(debug_img).save("debug_omnigen.png")
-        print("Image de debug sauvegardée sous debug_omnigen.png")
 
         print("Output batch shape:", img_batch.shape, "dtype:", img_batch.dtype)        
 
