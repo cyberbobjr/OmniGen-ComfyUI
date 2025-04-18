@@ -39,14 +39,6 @@ class OmniGenLoader:
             "store_in_vram": ("BOOLEAN", {
                 "default": False,
                 "tooltip": "Keep model in VRAM between generations. Faster but uses more VRAM."
-            }),
-            "separate_cfg_infer": ("BOOLEAN", {
-                "default": True,
-                "tooltip": "Use separate inference process for different guidance. Reduces memory cost."
-            }),
-            "offload_model": ("BOOLEAN", {
-                "default": False,
-                "tooltip": "Offload model to CPU. Reduces VRAM usage but slower."
             })
         }}
     
@@ -64,7 +56,7 @@ class OmniGenLoader:
                 return os.path.join(model_path, file)
         return None
 
-    def load_model(self, model_name, weight_dtype, store_in_vram, separate_cfg_infer, offload_model):
+    def load_model(self, model_name, weight_dtype, store_in_vram):
         print("\n=== OmniGen Model Loading ===")
         print(f"Pre-loading {get_vram_info()}")
 
@@ -75,7 +67,7 @@ class OmniGenLoader:
         if not os.path.exists(model_path):
             raise RuntimeError(f"Model folder {model_name} not found in models/OmniGen/")
 
-        memory_config = (store_in_vram, separate_cfg_infer, offload_model)
+        memory_config = (store_in_vram)
         
         # Check if we need to load a new model
         if (OmniGenLoader.current_loaded_model is None or 
@@ -104,17 +96,10 @@ class OmniGenLoader:
             print(f"\nLoading model: {model_name}")
             print(f"Dtype: {weight_dtype}")
             print(f"Store in VRAM: {store_in_vram}")
-            print(f"Separate CFG Inference: {separate_cfg_infer}")
-            print(f"Offload Model: {offload_model}")
             
-            # from OmniGen import OmniGenPipeline
             from diffusers import OmniGenPipeline
-            # use_kv_cache=True,
-            # offload_kv_cache=True,
-            # offload_model=offload_model,
 
             pipe = OmniGenPipeline.from_pretrained(model_path, torch_dtype=dtype)
-            # pipe.model = pipe.model.to(dtype)
 
             print(f"After loading: {get_vram_info()}")
 
